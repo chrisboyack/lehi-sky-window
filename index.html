@@ -50,7 +50,7 @@ button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid
 .verdict .when{color:var(--muted)}
 .go{color:var(--good)} .marginal{color:var(--warn)} .nogo{color:var(--bad)}
 .window{font:500 17px/1.35 var(--f-body)}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 10px}
 .stat{display:grid;gap:2px}
 .stat .v{font:500 18px/1.2 var(--f-data);font-variant-numeric:tabular-nums}
 .notes{display:flex;flex-wrap:wrap;gap:6px}
@@ -76,6 +76,23 @@ button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid
 .tl-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted)}
 .tl-legend i{display:inline-block;width:14px;height:6px;border-radius:3px;margin-right:6px;vertical-align:middle}
 .tl-legend i.dash{height:0;border-top:2px dashed var(--accent);border-radius:0}
+
+/* Targets */
+.filters{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.filters button{flex:none;padding:8px 12px;font-size:12px}
+.filters button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.targets{display:grid}
+.tg{display:grid;grid-template-columns:minmax(0,1fr) 84px 52px;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.tg-name{font:600 16px/1.2 var(--f-display);letter-spacing:.01em}
+.tg-name small{font:500 12px/1 var(--f-data);color:var(--muted);margin-left:6px}
+.tg-meta{font-size:13px;color:var(--muted)}
+.tg-note{font:600 11px/1.3 var(--f-display);letter-spacing:.06em;text-transform:uppercase;margin-top:3px}
+.tg svg{width:84px;height:30px;display:block}
+.tg-alt{text-align:right;font:500 16px/1.15 var(--f-data);font-variant-numeric:tabular-nums}
+.tg-alt small{display:block;font-size:11px;color:var(--muted);white-space:nowrap}
+.stat .v.go,.stat .v.marginal,.stat .v.nogo{font-family:var(--f-display);font-weight:700;font-size:19px}
+.stat .s{font:500 11px/1.2 var(--f-data);color:var(--muted)}
 
 /* Hours */
 .hours{display:grid;gap:2px}
@@ -135,6 +152,19 @@ footer a{color:var(--accent)}
 
   <div class="hero" id="hero" hidden></div>
 
+  <section id="targetsSec" hidden>
+    <h2 id="targetsTitle">What’s up</h2>
+    <div class="filters" id="tfilter" role="group" aria-label="Filter targets">
+      <button type="button" data-f="all" aria-pressed="true">All</button>
+      <button type="button" data-f="planets" aria-pressed="false">Planets</button>
+      <button type="button" data-f="deep" aria-pressed="false">Galaxies &amp; nebulae</button>
+      <button type="button" data-f="clusters" aria-pressed="false">Clusters</button>
+      <button type="button" data-f="doubles" aria-pressed="false">Doubles</button>
+    </div>
+    <div class="targets" id="targets"></div>
+    <div class="sub" id="targetsFoot"></div>
+  </section>
+
   <section id="hoursSec" hidden>
     <h2 id="hoursTitle">Hour by hour</h2>
     <div class="hours" id="hours"></div>
@@ -163,10 +193,10 @@ footer a{color:var(--accent)}
 
   <footer>
     <div id="issued">Forecast data: NOAA National Weather Service (api.weather.gov).</div>
-    <div>Cloud cover is not seeing or transparency. For those, check
+    <div>Seeing and transparency: 7Timer! astronomical forecast (3-day). Cross-check with
       <a href="https://www.cleardarksky.com/csk/prov/Utah_charts.html" target="_blank" rel="noopener">Clear Sky Charts for Utah</a> or
       <a href="https://www.astrospheric.com/" target="_blank" rel="noopener">Astrospheric</a>.</div>
-    <div>Darkness and moon times are computed on this device and are accurate to a few minutes.</div>
+    <div>Darkness, moon and planet positions are computed on this device and are accurate to a few minutes.</div>
   </footer>
 </div>
 
@@ -194,15 +224,95 @@ function moonEcl(n){
   const L = norm(218.316 + 13.176396*n), M = norm(134.963 + 13.064993*n)*rad, F = norm(93.272 + 13.229350*n)*rad;
   return {lam: norm(L + 6.289*Math.sin(M)), bet: 5.128*Math.sin(F)};
 }
-function altitude(t, lam, bet){
-  const n = dayN(t), eps = (23.439 - 0.0000004*n)*rad;
-  const l = lam*rad, b = bet*rad;
-  const ra = Math.atan2(Math.sin(l)*Math.cos(eps) - Math.tan(b)*Math.sin(eps), Math.cos(l));
-  const dec = Math.asin(Math.sin(b)*Math.cos(eps) + Math.cos(b)*Math.sin(eps)*Math.sin(l));
-  const lst = norm(280.46061837 + 360.98564736629*n + S.lon)*rad;
+function eclToEq(lam, bet, n){
+  const eps = (23.439 - 0.0000004*n)*rad, l = lam*rad, b = bet*rad;
+  return {
+    ra: Math.atan2(Math.sin(l)*Math.cos(eps) - Math.tan(b)*Math.sin(eps), Math.cos(l)),
+    dec: Math.asin(Math.sin(b)*Math.cos(eps) + Math.cos(b)*Math.sin(eps)*Math.sin(l))
+  };
+}
+function altEq(t, ra, dec){ // ra, dec in radians
+  const n = dayN(t), lst = norm(280.46061837 + 360.98564736629*n + S.lon)*rad;
   const H = lst - ra, phi = S.lat*rad;
   return Math.asin(Math.sin(phi)*Math.sin(dec) + Math.cos(phi)*Math.cos(dec)*Math.cos(H))*deg;
 }
+function altitude(t, lam, bet){ const q = eclToEq(lam, bet, dayN(t)); return altEq(t, q.ra, q.dec); }
+const sepDeg = (r1,d1,r2,d2) => Math.acos(Math.min(1, Math.sin(d1)*Math.sin(d2) + Math.cos(d1)*Math.cos(d2)*Math.cos(r1-r2)))*deg;
+
+/* Planets: JPL approximate Keplerian elements (1800–2050), J2000 values + rates per century.
+   [a, e, I, L, long.peri, long.node] then rates in the same order. */
+const PLANETS = {
+  Mercury:[0.38709927,0.20563593,7.00497902,252.25032350,77.45779628,48.33076593, 0.00000037,0.00001906,-0.00594749,149472.67411175,0.16047689,-0.12534081],
+  Venus:  [0.72333566,0.00677672,3.39467605,181.97909950,131.60246718,76.67984255, 0.00000390,-0.00004107,-0.00078890,58517.81538729,0.00268329,-0.27769418],
+  Earth:  [1.00000261,0.01671123,-0.00001531,100.46457166,102.93768193,0, 0.00000562,-0.00004392,-0.01294668,35999.37244981,0.32327364,0],
+  Mars:   [1.52371034,0.09339410,1.84969142,-4.55343205,-23.94362959,49.55953891, 0.00001847,0.00007882,-0.00813131,19140.30268499,0.44441088,-0.29257343],
+  Jupiter:[5.20288700,0.04838624,1.30439695,34.39644051,14.72847983,100.47390909, -0.00011607,-0.00013253,-0.00183714,3034.74612775,0.21252668,0.20469106],
+  Saturn: [9.53667594,0.05386179,2.48599187,49.95424423,92.59887831,113.66242448, -0.00125060,-0.00050991,0.00193609,1222.49362201,-0.41897216,-0.28867794],
+  Uranus: [19.18916464,0.04725744,0.77263783,313.23810451,170.95427630,74.01692503, -0.00196176,-0.00004397,-0.00242939,428.48202785,0.40805281,0.04240589],
+  Neptune:[30.06992276,0.00859048,1.77004347,-55.12002969,44.96476227,131.78422574, 0.00026291,0.00005105,0.00035372,218.45945325,-0.32241464,-0.00508664]
+};
+function helio(name, T){
+  const p = PLANETS[name], v = i => p[i] + p[i+6]*T;
+  const a = v(0), e = v(1), I = v(2)*rad, L = v(3), wb = v(4), O = v(5);
+  const w = (wb - O)*rad, Om = O*rad;
+  let M = norm(L - wb); if(M > 180) M -= 360; M *= rad;
+  let E = M + e*Math.sin(M);
+  for(let k=0;k<6;k++) E -= (E - e*Math.sin(E) - M)/(1 - e*Math.cos(E));
+  const xp = a*(Math.cos(E) - e), yp = a*Math.sqrt(1 - e*e)*Math.sin(E);
+  const cw = Math.cos(w), sw = Math.sin(w), cO = Math.cos(Om), sO = Math.sin(Om), cI = Math.cos(I), sI = Math.sin(I);
+  return [
+    (cw*cO - sw*sO*cI)*xp + (-sw*cO - cw*sO*cI)*yp,
+    (cw*sO + sw*cO*cI)*xp + (-sw*sO + cw*cO*cI)*yp,
+    (sw*sI)*xp + (cw*sI)*yp
+  ];
+}
+function planetEq(name, t){
+  const n = dayN(t), T = n/36525, P = helio(name, T), E = helio("Earth", T);
+  const x = P[0]-E[0], y = P[1]-E[1], z = P[2]-E[2];
+  return eclToEq(norm(Math.atan2(y,x)*deg), Math.atan2(z, Math.hypot(x,y))*deg, n);
+}
+function moonEq(t){ const n = dayN(t), m = moonEcl(n); return eclToEq(m.lam, m.bet, n); }
+
+/* Curated targets. ra in hours, dec in degrees (J2000). moon = how much moonlight hurts it (0–1). */
+const H2R = 15*rad;
+const CATALOG = [
+  ["M31","Andromeda Galaxy","Galaxy","And",3.4,0.712,41.27,.8,1],
+  ["M33","Triangulum Galaxy","Galaxy","Tri",5.7,1.564,30.66,.95,0],
+  ["M81","Bode’s Galaxy","Galaxy","UMa",6.9,9.926,69.07,.8,0],
+  ["M82","Cigar Galaxy","Galaxy","UMa",8.4,9.931,69.68,.8,0],
+  ["M51","Whirlpool Galaxy","Galaxy","CVn",8.4,13.498,47.20,.9,1],
+  ["M101","Pinwheel Galaxy","Galaxy","UMa",7.9,14.053,54.35,.95,0],
+  ["M104","Sombrero Galaxy","Galaxy","Vir",8.0,12.667,-11.62,.8,0],
+  ["M87","Virgo A","Galaxy","Vir",8.6,12.514,12.39,.8,0],
+  ["M65","Leo Triplet","Galaxy","Leo",9.3,11.315,13.09,.9,0],
+  ["M42","Orion Nebula","Nebula","Ori",4.0,5.588,-5.39,.5,1],
+  ["M8","Lagoon Nebula","Nebula","Sgr",6.0,18.060,-24.38,.6,1],
+  ["M17","Omega Nebula","Nebula","Sgr",6.0,18.347,-16.18,.6,0],
+  ["M20","Trifid Nebula","Nebula","Sgr",6.3,18.044,-23.03,.75,0],
+  ["M1","Crab Nebula","Nebula","Tau",8.4,5.575,22.01,.8,0],
+  ["M57","Ring Nebula","Planetary nebula","Lyr",8.8,18.893,33.03,.3,1],
+  ["M27","Dumbbell Nebula","Planetary nebula","Vul",7.5,19.993,22.72,.45,1],
+  ["NGC 7662","Blue Snowball","Planetary nebula","And",8.6,23.432,42.54,.25,0],
+  ["NGC 2392","Eskimo Nebula","Planetary nebula","Gem",9.1,7.486,20.91,.25,0],
+  ["M13","Hercules Cluster","Globular cluster","Her",5.8,16.695,36.46,.4,1],
+  ["M92","Globular in Hercules","Globular cluster","Her",6.4,17.285,43.14,.4,0],
+  ["M15","Pegasus Cluster","Globular cluster","Peg",6.2,21.500,12.17,.4,0],
+  ["M2","Aquarius Cluster","Globular cluster","Aqr",6.5,21.558,-0.82,.4,0],
+  ["M3","Globular in Canes Venatici","Globular cluster","CVn",6.2,13.703,28.38,.4,0],
+  ["M5","Serpens Cluster","Globular cluster","Ser",5.7,15.310,2.08,.4,0],
+  ["M22","Sagittarius Cluster","Globular cluster","Sgr",5.1,18.607,-23.90,.4,0],
+  ["M45","Pleiades","Open cluster","Tau",1.6,3.790,24.12,.15,1],
+  ["NGC 869","Double Cluster","Open cluster","Per",3.7,2.333,57.13,.2,1],
+  ["NGC 457","Owl Cluster","Open cluster","Cas",6.4,1.322,58.29,.25,0],
+  ["M52","Open cluster in Cassiopeia","Open cluster","Cas",6.9,23.403,61.59,.3,0],
+  ["M11","Wild Duck Cluster","Open cluster","Sct",5.8,18.851,-6.27,.25,0],
+  ["M35","Open cluster in Gemini","Open cluster","Gem",5.1,6.148,24.33,.25,0],
+  ["M37","Open cluster in Auriga","Open cluster","Aur",5.6,5.872,32.55,.25,0],
+  ["M44","Beehive Cluster","Open cluster","Cnc",3.7,8.667,19.67,.15,1],
+  ["β Cyg","Albireo","Double star","Cyg",3.1,19.512,27.96,.02,1],
+  ["ζ UMa","Mizar & Alcor","Double star","UMa",2.2,13.399,54.93,.02,0],
+  ["γ And","Almach","Double star","And",2.2,2.065,42.33,.02,0]
+].map(([id,name,type,con,mag,ra,dec,moon,show]) => ({id,name,type,con,mag,ra:ra*H2R,dec:dec*rad,moon,show:!!show}));
 const sunAlt = t => altitude(t, sunEcl(dayN(t)), 0);
 const moonAlt = t => { const m = moonEcl(dayN(t)); return altitude(t, m.lam, m.bet) - 0.5; };
 function moonIllum(t){
@@ -230,6 +340,26 @@ async function fetchForecast(){
     place: rl ? `${rl.city}, ${rl.state}` : null, office: pp.gridId, series
   };
 }
+/* ---------- 7Timer! astronomy forecast (seeing, transparency; 3-hour steps, ~3 days) ---------- */
+const KEY_A = "lsw.astro";
+async function fetchAstro(){
+  const r = await fetch(`https://www.7timer.info/bin/astro.php?lon=${(+S.lon).toFixed(3)}&lat=${(+S.lat).toFixed(3)}&ac=0&unit=metric&output=json&tzshift=0`);
+  if(!r.ok) throw new Error("7Timer returned " + r.status);
+  const j = await r.json();
+  const i = j.init;
+  const base = Date.UTC(+i.slice(0,4), +i.slice(4,6)-1, +i.slice(6,8), +i.slice(8,10));
+  return {fetchedAt: Date.now(), lat:S.lat, lon:S.lon, rows: j.dataseries.map(d => [base + d.timepoint*HOUR, d.seeing, d.transparency])};
+}
+function astroMap(a){
+  const m = new Map();
+  if(!a) return m;
+  a.rows.forEach(([t, see, tr]) => { for(let k=-1;k<=1;k++) m.set(t + k*HOUR, {see, tr}); });
+  return m;
+}
+const QUAL = v => v == null ? null : v <= 2 ? "Excellent" : v <= 3 ? "Good" : v <= 5 ? "Average" : "Poor";
+const QCLS = v => v == null ? "" : v <= 3 ? "go" : v <= 5 ? "marginal" : "nogo";
+const SEE_ARC = ["<0.5″","0.5–0.75″","0.75–1″","1–1.25″","1.25–1.5″","1.5–2″","2–2.5″",">2.5″"];
+
 function hoursOf(dur){
   const m = /P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?/.exec(dur) || [];
   return Math.max(1, (+m[1]||0)*24 + (+m[2]||0));
@@ -254,7 +384,8 @@ function expand(s, conv){
 
 /* ---------- Model ---------- */
 const HOUR = 3600000;
-function build(data){
+function build(data, astro){
+  const am = astroMap(astro);
   const sr = data.series;
   const sky = expand(sr.skyCover), wind = expand(sr.windSpeed, toMph), gust = expand(sr.windGust, toMph);
   const temp = expand(sr.temperature), dew = expand(sr.dewpoint), rh = expand(sr.relativeHumidity), pop = expand(sr.probabilityOfPrecipitation);
@@ -294,11 +425,12 @@ function build(data){
       const k = bandOf(a), last = bands[bands.length-1];
       if(last && last.k === k) last.b = t + 5*60000; else bands.push({k, a:t, b:t + 5*60000});
     });
-    const tlClouds = [], tlWind = [], tlMoon = [];
+    const tlClouds = [], tlWind = [], tlMoon = [], tlSee = [];
     for(let h=Math.floor(t0/HOUR)*HOUR; h<t1; h+=HOUR){
       const c = sky.get(h), w = wind.get(h);
       if(c != null) tlClouds.push({t:h + HOUR/2, v:c});
       if(w != null){ const g = gust.get(h) ?? w; tlWind.push({a:h, b:h+HOUR, over: w > S.maxWind || g > S.maxGust}); }
+      const q = am.get(h); if(q) tlSee.push({a:h, b:h+HOUR, v:q.see});
     }
     for(let t=t0; t<t1; t+=10*60000){
       const up = moonAlt(t + 5*60000) > 0, last = tlMoon[tlMoon.length-1];
@@ -316,10 +448,12 @@ function build(data){
       const T = temp.get(h), D = dew.get(h), RH = rh.get(h);
       const spread = (T != null && D != null) ? T - D : null;
       const dark = sa < -18;
+      const q = am.get(h) || {};
       const cloudOk = c <= S.maxCloud, windOk = w <= S.maxWind && g <= S.maxGust;
       hours.push({
         t:h, dark, cloud:c, wind:w, gust:g, tempF: T!=null ? T*9/5+32 : null,
         rh:RH, pop:pop.get(h), dewRisk: (spread != null && spread <= 2.5) || (RH != null && RH >= 90),
+        see: q.see ?? null, tr: q.tr ?? null,
         moonUp: moonAlt(mid) > 0, good: dark && cloudOk && windOk,
         reason: !cloudOk ? "Clouds" : !windOk ? "Wind" : "Good"
       });
@@ -335,13 +469,17 @@ function build(data){
       if(run.length > best.length) best = run.slice();
     });
     const goodCount = darkHrs.filter(h => h.good).length;
-    const verdict = best.length >= S.minHours ? "go" : goodCount >= 1 ? "marginal" : "nogo";
+    let verdict = best.length >= S.minHours ? "go" : goodCount >= 1 ? "marginal" : "nogo";
     const span = best.length ? best : darkHrs;
     const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
+    const sees = span.map(h => h.see).filter(v => v != null), trs = span.map(h => h.tr).filter(v => v != null);
+    const seeAvg = sees.length ? Math.round(avg(sees)) : null, trAvg = trs.length ? Math.round(avg(trs)) : null;
+    const hazy = verdict === "go" && trAvg != null && trAvg >= 6;
+    if(hazy) verdict = "marginal";
     const mid = dusk && dawn ? (dusk+dawn)/2 : s + 12*HOUR;
     nights.push({
       start:s, dusk, dawn, sunset, sunrise, moonrise, moonset, hours,
-      tl:{t0, t1, bands, clouds:tlClouds, wind:tlWind, moon:tlMoon}, darkHrs, best, verdict, goodCount,
+      tl:{t0, t1, bands, clouds:tlClouds, wind:tlWind, moon:tlMoon, see:tlSee}, darkHrs, best, verdict, goodCount, seeAvg, trAvg, hazy,
       partial: (dusk && dusk < now) || (dawn && dawn > last),
       cloudAvg: Math.round(avg(span.map(h=>h.cloud))),
       windMax: Math.round(Math.max(...span.map(h=>h.wind))),
@@ -353,6 +491,62 @@ function build(data){
     });
   }
   return {nights, data};
+}
+
+/* ---------- Targets ---------- */
+const PLANET_INFO = {
+  Mercury:{mag:0, bonus:.15}, Venus:{mag:-4.2, bonus:.35}, Mars:{mag:0.5, bonus:.3},
+  Jupiter:{mag:-2.4, bonus:.4}, Saturn:{mag:0.8, bonus:.4}, Uranus:{mag:5.7, bonus:.05}, Neptune:{mag:7.8, bonus:0}
+};
+const GROUP = t => t === "Planet" ? "planets" : t === "Moon" ? "moon" : t === "Double star" ? "doubles" : /cluster/i.test(t) ? "clusters" : "deep";
+function computeTargets(n){
+  const d0 = n.dusk || n.tl.t0, d1 = n.dawn || n.tl.t1;
+  const w0 = n.best.length ? n.best[0].t : d0, w1 = n.best.length ? n.best[n.best.length-1].t + HOUR : d1;
+  const ts = []; for(let t=d0; t<=d1; t+=15*60000) ts.push(t);
+  const inWin = ts.map(t => t >= w0 && t <= w1);
+  const moon = ts.map(t => ({eq: moonEq(t), up: moonAlt(t) > 0}));
+  const k = n.moon.pct/100;
+  const out = [];
+  const evaluate = (obj, ra, dec, minAlt) => {
+    const alts = ts.map(t => altEq(t, ra, dec));
+    let peak = -90, peakI = -1;
+    alts.forEach((a,i) => { if(inWin[i] && a > peak){ peak = a; peakI = i; } });
+    if(peakI < 0 || peak < minAlt) return;
+    let upN = 0, moonN = 0;
+    alts.forEach((a,i) => { if(inWin[i] && a > minAlt){ upN++; if(moon[i].up) moonN++; } });
+    const sep = sepDeg(ra, dec, moon[peakI].eq.ra, moon[peakI].eq.dec);
+    const pen = Math.min(1, obj.moon * k * (upN ? moonN/upN : 0) * (sep < 35 ? 1.25 : 1));
+    const score = (peak/90)*(1 - pen) + (obj.bonus || 0) + (obj.show ? .15 : 0);
+    let note = "", tone = "";
+    if(pen >= .45){ note = "Moon washes it out"; tone = "nogo"; }
+    else if(obj.type === "Planet" && n.seeAvg != null){
+      if(n.seeAvg >= 6){ note = "Turbulent air: soft detail"; tone = "marginal"; }
+      else if(n.seeAvg <= 3){ note = "Steady air: sharp detail"; tone = "go"; }
+    }
+    else if(obj.moon >= .6 && n.trAvg != null && n.trAvg <= 3 && pen < .2){ note = "Transparent sky: great contrast"; tone = "go"; }
+    else if(pen >= .2){ note = "Some moonlight interference"; tone = "marginal"; }
+    out.push(Object.assign({}, obj, {alts, peak:Math.round(peak), peakT: ts[peakI], score, note, tone, group: GROUP(obj.type)}));
+  };
+  const mid = (d0 + d1)/2;
+  Object.keys(PLANET_INFO).forEach(p => {
+    const q = planetEq(p, mid);
+    evaluate({id:"", name:p, type:"Planet", con:"", mag:PLANET_INFO[p].mag, moon:0, bonus:PLANET_INFO[p].bonus}, q.ra, q.dec, 10);
+  });
+  CATALOG.forEach(c => evaluate(c, c.ra, c.dec, 20));
+  // The Moon itself
+  if(n.moon.pct >= 3){
+    const alts = ts.map(t => moonAlt(t));
+    let peak = -90, peakI = -1;
+    alts.forEach((a,i) => { if(inWin[i] && a > peak){ peak = a; peakI = i; } });
+    if(peak > 10){
+      const full = n.moon.pct >= 90;
+      out.push({id:"", name:"The Moon", type:"Moon", con:"", mag:null, alts, peak:Math.round(peak), peakT:ts[peakI],
+        score: n.moon.pct >= 10 && n.moon.pct <= 90 ? 1.35 : 1.05, group:"moon",
+        note: full ? "Flat light, bright ray craters" : "Sharp craters along the terminator", tone:""});
+    }
+  }
+  out.sort((a,b) => b.score - a.score);
+  return {items: out, ts, inWin};
 }
 
 /* ---------- Render ---------- */
@@ -415,6 +609,7 @@ function renderTimeline(n){
   const op = (0.25 + 0.75*n.moon.pct/100).toFixed(2);
   const moonRow = tl.moon.map(m => `<span style="left:${X(m.a)}%;width:${W(m.a,m.b)}%;background:var(--moon-lit);opacity:${op}"></span>`).join("");
   const windRow = tl.wind.map(w => `<span style="left:${X(w.a)}%;width:${W(w.a,w.b)}%;background:var(${w.over ? "--bad" : "--good"});opacity:${w.over ? 1 : .45}"></span>`).join("");
+  const seeRow = tl.see.map(q => `<span style="left:${X(q.a)}%;width:${W(q.a,q.b)}%;background:var(--${q.v <= 3 ? "good" : q.v <= 5 ? "warn" : "bad"});opacity:${q.v <= 3 ? .55 : .85}"></span>`).join("");
   const best = n.best.length ? `<div class="tl-best" style="left:${X(n.best[0].t)}%;width:${W(n.best[0].t, n.best[n.best.length-1].t + HOUR)}%"><em>Best</em></div>` : "";
   const ticks = [];
   for(let h=Math.ceil(tl.t0/HOUR)*HOUR; h<tl.t1; h+=HOUR){
@@ -427,24 +622,33 @@ function renderTimeline(n){
       <svg class="tl-sky" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">${bands}${cloud}${limit}</svg>
       <div class="tl-row" title="Moon above the horizon">${moonRow}</div>
       <div class="tl-row" title="Wind and gusts vs your limits">${windRow}</div>
+      ${tl.see.length ? `<div class="tl-row" title="Seeing (atmospheric steadiness)">${seeRow}</div>` : ""}
       ${best}
     </div>
     <div class="tl-axis">${ticks.join("")}</div>
     <div class="tl-legend">
       <span><i style="background:var(--cloud);opacity:.7"></i>Clouds</span>
       <span><i class="dash"></i>${S.maxCloud}% limit</span>
-      <span><i style="background:var(--moon-lit)"></i>Moon up</span>
-      <span><i style="background:var(--good);opacity:.45"></i>Calm</span>
-      <span><i style="background:var(--bad)"></i>Too windy</span>
+      <span>Rows: moon up · wind ${tl.see.length ? "· seeing" : ""}</span>
+      <span><i style="background:var(--good);opacity:.5"></i>Good</span>
+      <span><i style="background:var(--warn)"></i>Fair</span>
+      <span><i style="background:var(--bad)"></i>Poor</span>
     </div>
   </div>`;
 }
 
+function qualStat(label, v, sub){
+  const none = astroState === "failed" ? "Unavailable" : "Beyond 3 days";
+  return `<div class="stat"><span class="label">${label}</span>${v != null
+    ? `<span class="v ${QCLS(v)}">${QUAL(v)}</span>${sub ? `<span class="s">${sub}</span>` : ""}`
+    : `<span class="s" style="padding-top:4px">${none}</span>`}</div>`;
+}
 function renderHero(n, i){
   const notes = [];
   if(n.dusk && n.dawn) notes.push(`<span class="chip">Astro dark ${fmtT(n.dusk)} – ${fmtT(n.dawn)}</span>`);
   notes.push(`<span class="chip">${n.moonFree} moon-free dark h</span>`);
   if(n.moon.pct >= 60 && n.moonUpBest) notes.push(`<span class="chip alert">Bright moon up during window</span>`);
+  if(n.hazy) notes.push(`<span class="chip alert">Hazy sky: downgraded to Marginal</span>`);
   if(n.dewRisk) notes.push(`<span class="chip alert">Dew risk: bring a heater or shield</span>`);
   if(n.partial) notes.push(`<span class="chip">Partial night in forecast</span>`);
   $("hero").innerHTML = `
@@ -462,6 +666,8 @@ function renderHero(n, i){
       <div class="stat"><span class="label">Wind max</span><span class="v">${n.windMax} mph</span></div>
       <div class="stat"><span class="label">Gust max</span><span class="v">${n.gustMax} mph</span></div>
       <div class="stat"><span class="label">Clear dark h</span><span class="v">${n.goodCount}/${n.darkHrs.length}</span></div>
+      ${qualStat("Seeing", n.seeAvg, n.seeAvg != null ? SEE_ARC[n.seeAvg-1] : null)}
+      ${qualStat("Transparency", n.trAvg, null)}
     </div>
     <div class="notes">${notes.join("")}</div>`;
   $("hero").hidden = false;
@@ -484,11 +690,39 @@ function renderHours(n, i){
   $("hoursSec").hidden = false;
 }
 
+let tFilter = "all";
+function spark(it, inWin){
+  const N = it.alts.length, X = i => (i/(N-1)*84).toFixed(1), Y = a => (28 - Math.max(0,a)/90*26).toFixed(1);
+  let w0 = inWin.indexOf(true), w1 = inWin.lastIndexOf(true);
+  const shade = w0 >= 0 ? `<rect x="${X(w0)}" y="0" width="${(X(w1)-X(w0)).toFixed(1)}" height="30" fill="var(--accent)" fill-opacity=".12"/>` : "";
+  const d = it.alts.map((a,i) => `${i ? "L" : "M"}${X(i)},${Y(a)}`).join("");
+  const pi = it.alts.indexOf(Math.max(...it.alts.filter((a,i) => inWin[i])));
+  return `<svg viewBox="0 0 84 30" aria-hidden="true">${shade}<line x1="0" x2="84" y1="28" y2="28" stroke="var(--line)"/><path d="${d}" fill="none" stroke="var(--fg)" stroke-opacity=".75" stroke-width="1.5" stroke-linejoin="round"/>${pi >= 0 ? `<circle cx="${X(pi)}" cy="${Y(it.alts[pi])}" r="2.5" fill="var(--accent)"/>` : ""}</svg>`;
+}
+function renderTargets(n, i){
+  const T = n._targets || (n._targets = computeTargets(n));
+  const list = T.items.filter(it => tFilter === "all" || it.group === tFilter || (tFilter === "planets" && it.group === "moon")).slice(0, tFilter === "all" ? 10 : 14);
+  $("targetsTitle").textContent = `What’s up · ${nightName(n,i)}`;
+  $("targets").innerHTML = list.length ? list.map(it => `
+    <div class="tg">
+      <div style="min-width:0">
+        <div class="tg-name">${esc(it.name)}${it.id ? `<small>${esc(it.id)}</small>` : ""}</div>
+        <div class="tg-meta">${esc(it.type)}${it.con ? " · " + it.con : ""}${it.mag != null ? ` · mag ${it.mag}` : ""}</div>
+        ${it.note ? `<div class="tg-note ${it.tone}">${esc(it.note)}</div>` : ""}
+      </div>
+      ${spark(it, T.inWin)}
+      <div class="tg-alt">${it.peak}°<small>${fmtT(it.peakT)}</small></div>
+    </div>`).join("") : `<div class="empty">Nothing in this group rises high enough during tonight’s window.</div>`;
+  $("targetsFoot").textContent = `Ranked for ${n.best.length ? "your best window" : "the dark hours"}: height in the sky, moonlight and air quality. Curve shows altitude through the dark hours; shaded part is the window; dot and figures are the highest point.`;
+  $("tfilter").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.f === tFilter));
+  $("targetsSec").hidden = false;
+}
+
 function renderNights(){
   $("nights").innerHTML = model.nights.map((n,i) => `
     <button class="night" type="button" data-i="${i}" aria-pressed="${i===selected}">
-      <span class="d">${nightName(n,i)}<small>${fmtDay(n.start)} ${fmtDate(n.start)}</small></span>
-      <span class="m">${n.best.length ? `${fmtH(n.best[0].t)}–${fmtH(n.best[n.best.length-1].t+HOUR)}, ${n.best.length} h` : `${n.cloudAvg}% cloud, gusts ${n.gustMax}`} · moon ${n.moon.pct}%</span>
+      <span class="d">${nightName(n,i)}<small>${nightName(n,i) === fmtDay(n.start) ? "" : fmtDay(n.start) + " "}${fmtDate(n.start)}</small></span>
+      <span class="m">${n.best.length ? `${fmtH(n.best[0].t)}–${fmtH(n.best[n.best.length-1].t+HOUR)}, ${n.best.length} h` : `${n.cloudAvg}% cloud, gusts ${n.gustMax}`} · moon ${n.moon.pct}%${n.seeAvg != null ? ` · seeing ${QUAL(n.seeAvg).toLowerCase()}` : ""}</span>
       <span class="pill ${n.verdict}">${WORD[n.verdict]}</span>
     </button>`).join("");
   $("nightsSec").hidden = false;
@@ -496,12 +730,12 @@ function renderNights(){
 
 function render(){
   if(!model || !model.nights.length){
-    $("hero").hidden = true; $("hoursSec").hidden = true; $("nightsSec").hidden = true;
+    $("hero").hidden = true; $("hoursSec").hidden = true; $("targetsSec").hidden = true; $("nightsSec").hidden = true;
     return;
   }
   selected = Math.min(selected, model.nights.length-1);
   const n = model.nights[selected];
-  renderHero(n, selected); renderHours(n, selected); renderNights();
+  renderHero(n, selected); renderTargets(n, selected); renderHours(n, selected); renderNights();
   const d = model.data;
   $("place").textContent = `NWS ${d.office || ""} forecast · ${d.place ? d.place + " · " : ""}${(+d.lat).toFixed(4)}, ${(+d.lon).toFixed(4)}`;
   $("issued").textContent = `Forecast data: NOAA National Weather Service, issued ${d.updateTime ? new Date(d.updateTime).toLocaleString([], {weekday:"short", hour:"numeric", minute:"2-digit"}) : "unknown"}.`;
@@ -510,19 +744,27 @@ function render(){
 function setStatus(msg, err){ $("status").textContent = msg; $("status").className = "status" + (err ? " err" : ""); }
 function ago(t){ const m = Math.round((Date.now()-t)/60000); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m/60)} h ago`; }
 
+let astroState = "ok", astroCache = null;
 async function load(force){
-  const cached = store.get(KEY_D);
-  const sameSpot = cached && +cached.lat === +S.lat && +cached.lon === +S.lon;
-  if(sameSpot){ model = build(cached); render(); setStatus(`Updated ${ago(cached.fetchedAt)}`); }
-  if(sameSpot && !force && Date.now() - cached.fetchedAt < 30*60000) return;
+  const same = c => c && +c.lat === +S.lat && +c.lon === +S.lon;
+  const cached = store.get(KEY_D), cA = store.get(KEY_A);
+  const sameSpot = same(cached);
+  astroCache = same(cA) ? cA : null;
+  if(sameSpot){ model = build(cached, astroCache); render(); setStatus(`Updated ${ago(cached.fetchedAt)}`); }
+  if(sameSpot && !force && Date.now() - cached.fetchedAt < 30*60000 && astroCache) return;
   setStatus(sameSpot ? "Checking for a newer forecast…" : "Loading forecast…");
-  try{
-    const data = await fetchForecast();
-    store.set(KEY_D, data);
-    model = build(data); render();
-    setStatus(model.nights.length ? `Updated ${ago(data.fetchedAt)}` : "The forecast has no dark hours to score yet.");
-  }catch(e){
-    setStatus((sameSpot ? "Showing the saved forecast. " : "") + "Couldn’t reach the National Weather Service: " + e.message + ". Tap Refresh to try again.", true);
+  const astroFresh = astroCache && !force && Date.now() - astroCache.fetchedAt < 3*HOUR;
+  const [nws, sev] = await Promise.allSettled([fetchForecast(), astroFresh ? Promise.resolve(astroCache) : fetchAstro()]);
+  if(sev.status === "fulfilled"){ astroCache = sev.value; store.set(KEY_A, astroCache); astroState = "ok"; }
+  else if(!astroCache) astroState = "failed";
+  if(nws.status === "fulfilled"){
+    store.set(KEY_D, nws.value);
+    model = build(nws.value, astroCache); render();
+    setStatus(!model.nights.length ? "The forecast has no dark hours to score yet."
+      : `Updated ${ago(nws.value.fetchedAt)}` + (astroState === "failed" ? " · seeing forecast unavailable right now" : ""));
+  }else{
+    if(sameSpot){ model = build(cached, astroCache); render(); }
+    setStatus((sameSpot ? "Showing the saved forecast. " : "") + "Couldn’t reach the National Weather Service: " + nws.reason.message + ". Tap Refresh to try again.", true);
   }
 }
 
@@ -531,6 +773,10 @@ $("nights").addEventListener("click", e => {
   const b = e.target.closest(".night"); if(!b) return;
   selected = +b.dataset.i; render();
   $("hero").scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block:"start"});
+});
+$("tfilter").addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  tFilter = b.dataset.f; if(model) renderTargets(model.nights[selected], selected);
 });
 $("refresh").addEventListener("click", () => load(true));
 function setRed(on){
@@ -548,7 +794,7 @@ $("form").addEventListener("submit", e => {
   if(Object.values(next).some(x => !isFinite(x))){ setStatus("Every setting needs a number.", true); return; }
   const moved = next.lat !== S.lat || next.lon !== S.lon;
   S = next; store.set(KEY_S, S);
-  if(moved) load(true); else { const c = store.get(KEY_D); if(c){ model = build(c); render(); } }
+  if(moved) load(true); else { const c = store.get(KEY_D); if(c){ model = build(c, astroCache); render(); } }
   $("settings").open = false;
 });
 $("reset").addEventListener("click", () => { S = Object.assign({}, DEFAULTS); store.set(KEY_S, S); fillForm(); load(true); });
