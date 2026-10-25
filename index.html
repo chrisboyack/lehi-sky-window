@@ -13,6 +13,8 @@
 :root{
   --bg:#0b0f17; --panel:#121826; --line:#222b3d; --fg:#dde3ee; --muted:#8792a8; --accent:#9db4ff;
   --good:#5fd3a6; --warn:#e9b65c; --bad:#e2747e;
+  --sky-day:#3d5f93; --sky-civil:#2b4374; --sky-naut:#1b2b50; --sky-astro:#111a33; --sky-night:#0a1022;
+  --cloud:#c9d2e3; --moon-lit:#f1ecd6; --moon-dark:#1b2234;
   --f-display:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;
   --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-data:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
@@ -21,6 +23,8 @@
 :root.red{
   --bg:#080000; --panel:#140303; --line:#2a0808; --fg:#d23a2a; --muted:#8a2318; --accent:#ff4a35;
   --good:#ff4a35; --warn:#c23020; --bad:#7a1a10;
+  --sky-day:#3a0b06; --sky-civil:#2a0704; --sky-naut:#1c0403; --sky-astro:#120202; --sky-night:#060000;
+  --cloud:#b8321f; --moon-lit:#e0412e; --moon-dark:#1e0403;
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -53,16 +57,36 @@ button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid
 .chip{font:500 12px/1 var(--f-body);border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--muted)}
 .chip.alert{color:var(--warn);border-color:var(--warn)}
 
+/* Moon + timeline */
+.top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start}
+.top .left{display:grid;gap:8px;min-width:0}
+.moon{display:grid;justify-items:center;gap:4px}
+.moon svg{width:64px;height:64px;display:block}
+.moon .mt{font:500 11px/1.35 var(--f-data);color:var(--muted);text-align:center;white-space:nowrap}
+.tl{display:grid;gap:6px}
+.tl-ends{display:flex;justify-content:space-between;gap:8px;font:500 12px/1 var(--f-data);color:var(--muted)}
+.tl-stack{position:relative;display:grid;gap:4px}
+.tl-sky{display:block;width:100%;height:78px;border-radius:8px}
+.tl-row{position:relative;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.tl-row span{position:absolute;top:0;bottom:0}
+.tl-best{position:absolute;top:-4px;bottom:-4px;border:1.5px solid var(--accent);border-radius:9px;pointer-events:none}
+.tl-best em{position:absolute;bottom:18px;left:5px;font:700 10px/1 var(--f-display);letter-spacing:.1em;text-transform:uppercase;font-style:normal;color:var(--accent);background:var(--panel);padding:3px 5px;border-radius:4px}
+.tl-axis{position:relative;height:14px;font:500 11px/1 var(--f-data);color:var(--muted)}
+.tl-axis span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap}
+.tl-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted)}
+.tl-legend i{display:inline-block;width:14px;height:6px;border-radius:3px;margin-right:6px;vertical-align:middle}
+.tl-legend i.dash{height:0;border-top:2px dashed var(--accent);border-radius:0}
+
 /* Hours */
 .hours{display:grid;gap:2px}
-.hr{display:grid;grid-template-columns:62px 1fr 92px 70px;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.hr{display:grid;grid-template-columns:62px 1fr 64px 104px;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
 .hr.twi{opacity:.45}
-.hr .t{font-family:var(--f-data);font-size:13px}
+.hr .t{font-family:var(--f-data);font-size:13px;white-space:nowrap}
 .bar{position:relative;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
 .bar i{position:absolute;inset:0 auto 0 0;background:var(--muted);border-radius:4px}
 .bar b{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--accent)}
 .hr .w{font-family:var(--f-data);font-size:13px;text-align:right;white-space:nowrap}
-.tag{font:600 11px/1 var(--f-display);letter-spacing:.08em;text-transform:uppercase;text-align:right}
+.tag{font:600 11px/1 var(--f-display);letter-spacing:.08em;text-transform:uppercase;text-align:right;white-space:nowrap}
 .hdr{color:var(--muted);font:600 11px/1.2 var(--f-display);letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid var(--line);padding:0 0 6px}
 
 /* Nights */
@@ -88,7 +112,7 @@ footer a{color:var(--accent)}
 .empty{color:var(--muted);padding:12px 0}
 @media (max-width:420px){
   .stats{grid-template-columns:repeat(2,1fr)}
-  .hr{grid-template-columns:54px 1fr 80px 58px;gap:8px}
+  .hr{grid-template-columns:62px minmax(0,1fr) 40px 84px;gap:8px}
   .verdict .word{font-size:38px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -244,11 +268,42 @@ function build(data){
     const s = start.getTime(), e = end.getTime();
     if(e < now || s > last) continue;
     // astronomical darkness
-    let dusk = null, dawn = null;
+    let dusk = null, dawn = null, sunset = null, sunrise = null, moonrise = null, moonset = null;
+    let pa = null, pm = null;
+    const sunS = [];
     for(let t=s; t<=e; t+=5*60000){
-      const a = sunAlt(t);
+      const a = sunAlt(t), m = moonAlt(t);
+      sunS.push([t,a]);
       if(a < -18 && dusk == null) dusk = t;
       if(a < -18) dawn = t;
+      if(pa != null){
+        if(pa >= -0.833 && a < -0.833 && sunset == null) sunset = t;
+        if(pa < -0.833 && a >= -0.833) sunrise = t;
+      }
+      if(pm != null){
+        if(pm <= 0 && m > 0 && moonrise == null) moonrise = t;
+        if(pm > 0 && m <= 0 && moonset == null) moonset = t;
+      }
+      pa = a; pm = m;
+    }
+    // timeline samples: sunset to sunrise
+    const t0 = (sunset || s + 6*HOUR) - 20*60000, t1 = (sunrise || e - 6*HOUR) + 20*60000;
+    const bandOf = a => a > -0.833 ? "day" : a > -6 ? "civil" : a > -12 ? "naut" : a > -18 ? "astro" : "night";
+    const bands = [];
+    sunS.filter(([t]) => t >= t0 - 5*60000 && t <= t1).forEach(([t,a]) => {
+      const k = bandOf(a), last = bands[bands.length-1];
+      if(last && last.k === k) last.b = t + 5*60000; else bands.push({k, a:t, b:t + 5*60000});
+    });
+    const tlClouds = [], tlWind = [], tlMoon = [];
+    for(let h=Math.floor(t0/HOUR)*HOUR; h<t1; h+=HOUR){
+      const c = sky.get(h), w = wind.get(h);
+      if(c != null) tlClouds.push({t:h + HOUR/2, v:c});
+      if(w != null){ const g = gust.get(h) ?? w; tlWind.push({a:h, b:h+HOUR, over: w > S.maxWind || g > S.maxGust}); }
+    }
+    for(let t=t0; t<t1; t+=10*60000){
+      const up = moonAlt(t + 5*60000) > 0, last = tlMoon[tlMoon.length-1];
+      if(!up) continue;
+      if(last && last.b === t) last.b = t + 10*60000; else tlMoon.push({a:t, b:t + 10*60000});
     }
     const hours = [];
     const h0 = Math.floor(s/HOUR)*HOUR;
@@ -285,7 +340,8 @@ function build(data){
     const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
     const mid = dusk && dawn ? (dusk+dawn)/2 : s + 12*HOUR;
     nights.push({
-      start:s, dusk, dawn, hours, darkHrs, best, verdict, goodCount,
+      start:s, dusk, dawn, sunset, sunrise, moonrise, moonset, hours,
+      tl:{t0, t1, bands, clouds:tlClouds, wind:tlWind, moon:tlMoon}, darkHrs, best, verdict, goodCount,
       partial: (dusk && dusk < now) || (dawn && dawn > last),
       cloudAvg: Math.round(avg(span.map(h=>h.cloud))),
       windMax: Math.round(Math.max(...span.map(h=>h.wind))),
@@ -323,18 +379,84 @@ function moonText(n){
   return `${ph}, ${p}% lit`;
 }
 
+function moonDisc(n){
+  const r = 28, k = n.moon.pct/100, e = (Math.abs(2*k - 1)*r).toFixed(2), wax = n.moon.waxing;
+  let lit = "";
+  if(k > 0.99) lit = `<circle r="${r}" fill="var(--moon-lit)"/>`;
+  else if(k >= 0.01){
+    const side = wax ? 1 : 0, term = wax ? (k > 0.5 ? 1 : 0) : (k > 0.5 ? 0 : 1);
+    lit = `<path d="M0,-${r} A${r},${r} 0 0 ${side} 0,${r} A${e},${r} 0 0 ${term} 0,-${r}Z" fill="var(--moon-lit)"/>`;
+  }
+  const glow = `<circle r="31.5" fill="var(--moon-lit)" fill-opacity="${(0.04 + 0.16*k).toFixed(2)}"/>`;
+  const rise = n.moonrise ? `Rises ${fmtT(n.moonrise)}` : null, set = n.moonset ? `Sets ${fmtT(n.moonset)}` : null;
+  const order = [rise, set].filter(Boolean).sort((a,b) => (a===rise ? n.moonrise : n.moonset) - (b===rise ? n.moonrise : n.moonset));
+  const times = order.length ? order.join("<br>") : (moonAlt(n.start + 12*HOUR) > 0 ? "Up all night" : "Down all night");
+  return `<div class="moon">
+    <svg viewBox="-32 -32 64 64" role="img" aria-label="${esc(moonText(n))}">${glow}<circle r="${r}" fill="var(--moon-dark)"/>${lit}</svg>
+    <div class="mt">${n.moon.pct}% lit<br>${times}</div></div>`;
+}
+
+function renderTimeline(n){
+  const tl = n.tl;
+  if(!tl || !tl.bands.length) return "";
+  const span = tl.t1 - tl.t0;
+  const X = t => Math.max(0, Math.min(100, (t - tl.t0)/span*100));
+  const W = (a,b) => Math.max(0, X(b) - X(a));
+  const bands = tl.bands.map(b => `<rect x="${(X(b.a)*10).toFixed(1)}" y="0" width="${(W(b.a,b.b)*10 + 0.6).toFixed(1)}" height="100" fill="var(--sky-${b.k})"/>`).join("");
+  let cloud = "";
+  if(tl.clouds.length){
+    const pts = tl.clouds.map(c => [X(c.t)*10, c.v]);
+    pts.unshift([0, pts[0][1]]); pts.push([1000, pts[pts.length-1][1]]);
+    const line = pts.map(p => `${p[0].toFixed(1)},${p[1]}`).join(" L");
+    cloud = `<path d="M0,0 L${line} L1000,0Z" fill="var(--cloud)" fill-opacity=".45"/>
+      <path d="M${line}" fill="none" stroke="var(--cloud)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  }
+  const limit = `<line x1="0" x2="1000" y1="${S.maxCloud}" y2="${S.maxCloud}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"/>`;
+  const op = (0.25 + 0.75*n.moon.pct/100).toFixed(2);
+  const moonRow = tl.moon.map(m => `<span style="left:${X(m.a)}%;width:${W(m.a,m.b)}%;background:var(--moon-lit);opacity:${op}"></span>`).join("");
+  const windRow = tl.wind.map(w => `<span style="left:${X(w.a)}%;width:${W(w.a,w.b)}%;background:var(${w.over ? "--bad" : "--good"});opacity:${w.over ? 1 : .45}"></span>`).join("");
+  const best = n.best.length ? `<div class="tl-best" style="left:${X(n.best[0].t)}%;width:${W(n.best[0].t, n.best[n.best.length-1].t + HOUR)}%"><em>Best</em></div>` : "";
+  const ticks = [];
+  for(let h=Math.ceil(tl.t0/HOUR)*HOUR; h<tl.t1; h+=HOUR){
+    const x = X(h);
+    if(new Date(h).getHours() % 2 === 0 && x > 6 && x < 94) ticks.push(`<span style="left:${x}%">${fmtH(h)}</span>`);
+  }
+  return `<div class="tl" aria-label="Night timeline from sunset to sunrise">
+    <div class="tl-ends"><span>Sunset ${n.sunset ? fmtT(n.sunset) : "–"}</span><span>Sunrise ${n.sunrise ? fmtT(n.sunrise) : "–"}</span></div>
+    <div class="tl-stack">
+      <svg class="tl-sky" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">${bands}${cloud}${limit}</svg>
+      <div class="tl-row" title="Moon above the horizon">${moonRow}</div>
+      <div class="tl-row" title="Wind and gusts vs your limits">${windRow}</div>
+      ${best}
+    </div>
+    <div class="tl-axis">${ticks.join("")}</div>
+    <div class="tl-legend">
+      <span><i style="background:var(--cloud);opacity:.7"></i>Clouds</span>
+      <span><i class="dash"></i>${S.maxCloud}% limit</span>
+      <span><i style="background:var(--moon-lit)"></i>Moon up</span>
+      <span><i style="background:var(--good);opacity:.45"></i>Calm</span>
+      <span><i style="background:var(--bad)"></i>Too windy</span>
+    </div>
+  </div>`;
+}
+
 function renderHero(n, i){
   const notes = [];
   if(n.dusk && n.dawn) notes.push(`<span class="chip">Astro dark ${fmtT(n.dusk)} – ${fmtT(n.dawn)}</span>`);
-  notes.push(`<span class="chip">${esc(moonText(n))}</span>`);
   notes.push(`<span class="chip">${n.moonFree} moon-free dark h</span>`);
   if(n.moon.pct >= 60 && n.moonUpBest) notes.push(`<span class="chip alert">Bright moon up during window</span>`);
   if(n.dewRisk) notes.push(`<span class="chip alert">Dew risk: bring a heater or shield</span>`);
   if(n.partial) notes.push(`<span class="chip">Partial night in forecast</span>`);
   $("hero").innerHTML = `
-    <div class="verdict"><span class="word ${n.verdict}">${WORD[n.verdict]}</span>
-      <span class="when">${nightName(n,i)} · ${fmtDay(n.start)} ${fmtDate(n.start)}</span></div>
-    <div class="window">${windowText(n)}</div>
+    <div class="top">
+      <div class="left">
+        <div class="verdict"><span class="word ${n.verdict}">${WORD[n.verdict]}</span>
+          <span class="when">${nightName(n,i)} · ${fmtDay(n.start)} ${fmtDate(n.start)}</span></div>
+        <div class="window">${windowText(n)}</div>
+      </div>
+      ${moonDisc(n)}
+    </div>
+    ${renderTimeline(n)}
     <div class="stats">
       <div class="stat"><span class="label">Cloud ${n.best.length ? "avg" : "avg dark"}</span><span class="v">${n.cloudAvg}%</span></div>
       <div class="stat"><span class="label">Wind max</span><span class="v">${n.windMax} mph</span></div>
@@ -354,11 +476,11 @@ function renderHours(n, i){
     return `<div class="hr${h.dark ? "" : " twi"}">
       <span class="t">${fmtH(h.t)}${h.moonUp ? " ☾" : ""}</span>
       <span class="bar" title="Cloud cover ${h.cloud}%"><i style="width:${h.cloud}%"></i>${mark}</span>
-      <span class="w">${Math.round(h.wind)}<span style="color:var(--muted)">/${Math.round(h.gust)}</span> mph</span>
+      <span class="w">${Math.round(h.wind)}<span style="color:var(--muted)">/${Math.round(h.gust)}</span></span>
       <span class="tag ${h.dark ? cls : ""}">${tag}${h.dark && h.dewRisk ? " · dew" : ""}</span>
     </div>`;
   }).join("");
-  $("hours").innerHTML = `<div class="hr hdr"><span>Hour</span><span>Cloud (line = ${S.maxCloud}%)</span><span style="text-align:right">Wind/gust</span><span style="text-align:right">Call</span></div>` + rows;
+  $("hours").innerHTML = `<div class="hr hdr"><span>Hour</span><span>Cloud (line = ${S.maxCloud}%)</span><span style="text-align:right" title="Sustained / gust, mph">Wind</span><span style="text-align:right">Call</span></div>` + rows;
   $("hoursSec").hidden = false;
 }
 
